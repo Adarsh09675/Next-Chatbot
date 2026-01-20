@@ -1,5 +1,8 @@
 'use client'
 
+// MEMO: This line is required for build! Do not remove.
+export const dynamic = 'force-dynamic'
+
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Send, Bot, Paperclip, Mic, User, Loader2 } from 'lucide-react'
