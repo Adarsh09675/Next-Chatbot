@@ -132,6 +132,18 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
+    return (
+        <React.Suspense fallback={<div className="flex min-h-screen w-full items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+            <DashboardLayoutContent>{children}</DashboardLayoutContent>
+        </React.Suspense>
+    )
+}
+
+function DashboardLayoutContent({
+    children,
+}: {
+    children: React.ReactNode
+}) {
     const [mounted, setMounted] = React.useState(false)
     const router = useRouter()
     const supabase = createClient()

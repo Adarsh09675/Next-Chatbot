@@ -9,13 +9,13 @@ import { Send, Bot, Paperclip, Mic, User, Loader2 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, Suspense } from 'react'
 import { useChat, Message } from 'ai/react'
 import { createClient } from '@/utils/supabase/client'
 import { toast } from 'sonner'
 import { useSearchParams, useRouter } from 'next/navigation'
 
-export default function DashboardPage() {
+function DashboardContent() {
     const [isUploading, setIsUploading] = useState(false)
     const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -309,5 +309,13 @@ export default function DashboardPage() {
                 </div>
             </div>
         </div>
+    )
+}
+
+export default function DashboardPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin" /></div>}>
+            <DashboardContent />
+        </Suspense>
     )
 }
