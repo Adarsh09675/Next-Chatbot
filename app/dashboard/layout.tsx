@@ -54,12 +54,6 @@ const SidebarContent = ({
         </div>
         <div className="flex-1 overflow-auto px-4">
             <div className="pb-4 space-y-1">
-                <Link href="/dashboard">
-                    <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground">
-                        <MessageSquare className="h-4 w-4" />
-                        Chat
-                    </Button>
-                </Link>
                 <Link href="/dashboard/documents">
                     <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground">
                         <Files className="h-4 w-4" />

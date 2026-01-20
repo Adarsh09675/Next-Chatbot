@@ -195,11 +195,9 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="flex flex-col h-full max-w-3xl mx-auto w-full">
+        <div className="flex flex-col h-full min-h-0 max-w-3xl mx-auto w-full">
             {/* Header */}
-            <div className="flex justify-end p-2 gap-2 items-center">
-                <Label className="text-sm font-medium text-primary bg-primary/10 px-2 py-1 rounded-md">Gemini 2.0 Flash</Label>
-            </div>
+
 
             {uploadedFileName && (
                 <div className="px-4 pb-2">
@@ -211,9 +209,9 @@ export default function DashboardPage() {
             )}
 
             {/* Chat Area */}
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+            <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
                 {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center space-y-4">
+                    <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center space-y-4 p-4">
                         <div className="bg-muted p-4 rounded-full">
                             <Bot className="w-10 h-10 text-muted-foreground" />
                         </div>
@@ -223,7 +221,7 @@ export default function DashboardPage() {
                         </p>
                     </div>
                 ) : (
-                    <div className="space-y-6 pb-4">
+                    <div className="space-y-6 p-4 pb-4">
                         {messages.map((message: Message) => (
                             <div
                                 key={message.id}
@@ -231,7 +229,7 @@ export default function DashboardPage() {
                                     }`}
                             >
                                 {message.role === 'assistant' && (
-                                    <Avatar className="w-8 h-8 border">
+                                    <Avatar className="w-8 h-8 border shrink-0">
                                         <AvatarFallback>AI</AvatarFallback>
                                     </Avatar>
                                 )}
@@ -244,7 +242,7 @@ export default function DashboardPage() {
                                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                                 </div>
                                 {message.role === 'user' && (
-                                    <Avatar className="w-8 h-8 border">
+                                    <Avatar className="w-8 h-8 border shrink-0">
                                         <AvatarFallback>You</AvatarFallback>
                                     </Avatar>
                                 )}
@@ -253,8 +251,8 @@ export default function DashboardPage() {
                     </div>
                 )}
                 {isLoading && (
-                    <div className="flex justify-start gap-4 pb-4">
-                        <Avatar className="w-8 h-8 border">
+                    <div className="flex justify-start gap-4 p-4 pt-0">
+                        <Avatar className="w-8 h-8 border shrink-0">
                             <AvatarFallback>AI</AvatarFallback>
                         </Avatar>
                         <div className="bg-muted rounded-2xl px-4 py-2 flex items-center">
