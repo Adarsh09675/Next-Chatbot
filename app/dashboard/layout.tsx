@@ -10,7 +10,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
     Menu,
@@ -18,33 +18,32 @@ import {
     MessageSquare,
     Settings,
     LogOut,
-    User,
-    PanelLeft,
+    Trash2,
+    Files,
+    Loader2,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { createClient } from '@/utils/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface ChatHistory {
     id: string
     title: string
-    date: string
+    created_at: string
 }
-
-// Mock data for chat history
-const history: ChatHistory[] = [
-    { id: '1', title: 'Previous Chat 1', date: 'Today' },
-    { id: '2', title: 'React Help', date: 'Yesterday' },
-    { id: '3', title: 'Code Refactoring', date: 'Previous 7 Days' },
-]
 
 const SidebarContent = ({
     userEmail,
     handleSignOut,
+    chats,
+    handleNewChat,
+    handleDeleteChat
 }: {
     userEmail: string
     handleSignOut: () => void
+    chats: ChatHistory[]
+    handleNewChat: () => void
+    handleDeleteChat: (id: string, e: React.MouseEvent) => void
 }) => (
     <div className="flex h-full flex-col gap-4">
         <div className="flex h-[60px] items-center px-6">
@@ -54,25 +53,54 @@ const SidebarContent = ({
             </Link>
         </div>
         <div className="flex-1 overflow-auto px-4">
+            <div className="pb-4 space-y-1">
+                <Link href="/dashboard">
+                    <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground">
+                        <MessageSquare className="h-4 w-4" />
+                        Chat
+                    </Button>
+                </Link>
+                <Link href="/dashboard/documents">
+                    <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground">
+                        <Files className="h-4 w-4" />
+                        Documents
+                    </Button>
+                </Link>
+            </div>
             <Button
                 variant="secondary"
                 className="mb-4 w-full justify-start gap-2"
-                onClick={() => console.log('New chat')}
+                onClick={handleNewChat}
             >
                 <Plus className="h-4 w-4" />
                 New chat
             </Button>
             <div className="flex flex-col gap-2">
-                <span className="text-xs font-semibold text-muted-foreground px-2">Recent</span>
-                {history.map((chat) => (
-                    <Button
-                        key={chat.id}
-                        variant="ghost"
-                        className="justify-start gap-2 overflow-hidden text-ellipsis whitespace-nowrap"
-                    >
-                        <MessageSquare className="h-4 w-4" />
-                        {chat.title}
-                    </Button>
+                <span className="text-xs font-semibold text-muted-foreground px-2">History</span>
+                {chats.length === 0 && (
+                    <span className="text-xs text-muted-foreground px-2">No chats yet</span>
+                )}
+                {chats.map((chat) => (
+                    <div key={chat.id} className="group relative">
+                        <Link href={`/dashboard?chatId=${chat.id}`}>
+                            <Button
+                                variant="ghost"
+                                className="w-full justify-start gap-2 overflow-hidden text-ellipsis whitespace-nowrap pr-8"
+                            >
+                                <MessageSquare className="h-4 w-4 shrink-0" />
+                                <span className="truncate">{chat.title}</span>
+                            </Button>
+                        </Link>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-0 top-0 h-9 w-9 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => handleDeleteChat(chat.id, e)}
+                        >
+                            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            <span className="sr-only">Delete chat</span>
+                        </Button>
+                    </div>
                 ))}
             </div>
         </div>
@@ -81,7 +109,6 @@ const SidebarContent = ({
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="w-full justify-start gap-2 px-2">
                         <Avatar className="h-6 w-6">
-                            <AvatarImage src="" />
                             <AvatarFallback>{userEmail?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                         </Avatar>
                         <span className="truncate text-sm font-medium">{userEmail}</span>
@@ -109,30 +136,76 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
+    const [mounted, setMounted] = React.useState(false)
     const router = useRouter()
     const supabase = createClient()
     const [userEmail, setUserEmail] = React.useState<string>('')
+    const [chats, setChats] = React.useState<ChatHistory[]>([])
+    const searchParams = useSearchParams()
+    const currentChatId = searchParams.get('chatId')
 
-    React.useEffect(() => {
-        async function getUser() {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user?.email) {
-                setUserEmail(user.email)
+    const fetchChats = React.useCallback(async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+            setUserEmail(user.email || '')
+            const { data, error } = await supabase
+                .from('chats')
+                .select('id, title, created_at')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+
+            if (!error && data) {
+                setChats(data)
             }
         }
-        getUser()
     }, [supabase])
+
+    React.useEffect(() => {
+        setMounted(true)
+        fetchChats()
+    }, [fetchChats, currentChatId])
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
         router.push('/login')
     }
 
+    const handleNewChat = () => {
+        router.push('/dashboard')
+    }
+
+    const handleDeleteChat = async (id: string, e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const { error } = await supabase.from('chats').delete().eq('id', id)
+        if (!error) {
+            setChats(chats.filter(c => c.id !== id))
+            if (currentChatId === id) {
+                router.push('/dashboard')
+            }
+        }
+    }
+
+    if (!mounted) {
+        return (
+            <div className="flex min-h-screen w-full items-center justify-center bg-background">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        )
+    }
+
     return (
         <div className="grid min-h-screen w-full md:grid-cols-[260px_1fr]">
             {/* Desktop Sidebar */}
             <div className="hidden border-r bg-muted/40 md:block">
-                <SidebarContent userEmail={userEmail} handleSignOut={handleSignOut} />
+                <SidebarContent
+                    userEmail={userEmail}
+                    handleSignOut={handleSignOut}
+                    chats={chats}
+                    handleNewChat={handleNewChat}
+                    handleDeleteChat={handleDeleteChat}
+                />
             </div>
 
             {/* Main Content Area */}
@@ -147,7 +220,17 @@ export default function DashboardLayout({
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" className="flex flex-col p-0 w-[260px]">
-                            <SidebarContent userEmail={userEmail} handleSignOut={handleSignOut} />
+                            <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                            <SheetDescription className="sr-only">
+                                Access your chat history and application documents.
+                            </SheetDescription>
+                            <SidebarContent
+                                userEmail={userEmail}
+                                handleSignOut={handleSignOut}
+                                chats={chats}
+                                handleNewChat={handleNewChat}
+                                handleDeleteChat={handleDeleteChat}
+                            />
                         </SheetContent>
                     </Sheet>
                     <div className="flex-1 font-semibold">My Chatbot</div>

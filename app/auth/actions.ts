@@ -23,6 +23,7 @@ export async function signout() {
 }
 
 export async function login(prevState: unknown, formData: FormData) {
+    console.log('>>> [AUTH ACTION] Login request received');
     const supabase = await createClient()
 
     const data = {
@@ -32,28 +33,26 @@ export async function login(prevState: unknown, formData: FormData) {
 
     const result = loginSchema.safeParse(data)
     if (!result.success) {
-        return { error: 'Invalid input' }
+        console.log('>>> [AUTH ACTION] Validation failed:', result.error.format());
+        return { error: 'Invalid email or password format' }
     }
 
+    console.log('>>> [AUTH ACTION] Attempting sign in for:', data.email);
     const { data: authData, error } = await supabase.auth.signInWithPassword(data)
 
     if (error) {
+        console.error('>>> [AUTH ACTION] Login Error:', error.message)
         return { error: error.message }
     }
 
-    // Check if this user belongs to this application
-    const appName = authData.user?.user_metadata?.app_name
-    if (appName !== 'my-chatbot') {
-        // Valid login but wrong app -> Sign them out immediately
-        await supabase.auth.signOut()
-        return { error: 'Account not authorized for this application.' }
-    }
+    console.log('>>> [AUTH ACTION] Login successful for:', authData.user?.email)
 
     revalidatePath('/', 'layout')
-    redirect('/')
+    redirect('/dashboard')
 }
 
 export async function signup(prevState: unknown, formData: FormData) {
+    console.log('>>> [AUTH ACTION] Signup request received');
     const supabase = await createClient()
 
     const data = {
@@ -64,9 +63,11 @@ export async function signup(prevState: unknown, formData: FormData) {
 
     const result = signupSchema.safeParse(data)
     if (!result.success) {
+        console.log('>>> [AUTH ACTION] Validation failed:', result.error.format());
         return { error: 'Invalid input' }
     }
 
+    console.log('>>> [AUTH ACTION] Attempting sign up for:', data.email);
     const { error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -79,9 +80,12 @@ export async function signup(prevState: unknown, formData: FormData) {
     })
 
     if (error) {
+        console.error('>>> [AUTH ACTION] Signup Error:', error.message)
         return { error: error.message }
     }
 
+    console.log('>>> [AUTH ACTION] Signup successful for:', data.email);
+
     revalidatePath('/', 'layout')
-    redirect('/')
+    redirect('/dashboard')
 }

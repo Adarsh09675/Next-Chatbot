@@ -10,10 +10,12 @@ create table if not exists public.chatbot_profiles (
 alter table public.chatbot_profiles enable row level security;
 
 -- Create policies (only allow users to view/edit their own profile)
+drop policy if exists "Users can view own chatbot profile" on public.chatbot_profiles;
 create policy "Users can view own chatbot profile" 
   on public.chatbot_profiles for select 
   using (auth.uid() = id);
 
+drop policy if exists "Users can update own chatbot profile" on public.chatbot_profiles;
 create policy "Users can update own chatbot profile" 
   on public.chatbot_profiles for update 
   using (auth.uid() = id);
