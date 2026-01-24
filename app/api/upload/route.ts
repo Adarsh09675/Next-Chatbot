@@ -61,39 +61,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'PDF is empty or could not be read' }, { status: 400 });
         }
 
-        console.log(`>>> [UPLOAD] Embedding ${chunks.length} chunks...`);
-
-        const { embeddings } = await embedMany({
-            model: google.textEmbeddingModel('text-embedding-004'),
-            values: chunks,
-        });
-
-        const indexName = process.env.PINECONE_INDEX_NAME!;
-        const index = pinecone.index(indexName);
-
-        // Prepare vectors for Pinecone
-        const vectors = chunks.map((chunk, i) => ({
-            id: `${file.name}-${Date.now()}-${i}`,
-            values: embeddings[i],
-            metadata: {
-                text: chunk,
-                filename: file.name,
-                userId: user.id
-            }
-        }));
-
-        console.log(`>>> [UPLOAD] Upserting to Pinecone [${indexName}]...`);
-
-        // Split into batches for Pinecone if many chunks
-        const batchSize = 100;
-        for (let i = 0; i < vectors.length; i += batchSize) {
-            const batch = vectors.slice(i, i + batchSize);
-            await index.upsert(batch);
-        }
-
         console.log(`>>> [UPLOAD] Saving metadata to Supabase...`);
 
-        // Record the upload in Supabase 'documents' table
+        // 1. Record the upload in Supabase 'documents' table FIRST to get the ID
         const { data: dbDoc, error: dbError } = await supabase
             .from('documents')
             .insert({
@@ -105,13 +75,56 @@ export async function POST(request: NextRequest) {
 
         if (dbError) {
             console.error('>>> [UPLOAD] Supabase Insert Error:', dbError.message);
+            return NextResponse.json({ error: 'Failed to save document metadata' }, { status: 500 });
         }
 
-        return NextResponse.json({
-            success: true,
-            chunks: chunks.length,
-            documentId: dbDoc?.id
-        });
+        const documentId = dbDoc.id;
+        console.log(`>>> [UPLOAD] Document ID created: ${documentId}`);
+
+        try {
+            console.log(`>>> [UPLOAD] Embedding ${chunks.length} chunks...`);
+
+            const { embeddings } = await embedMany({
+                model: google.textEmbeddingModel('text-embedding-004'),
+                values: chunks,
+            });
+
+            const indexName = process.env.PINECONE_INDEX_NAME!;
+            const index = pinecone.index(indexName);
+
+            // Prepare vectors for Pinecone with documentId in metadata
+            const vectors = chunks.map((chunk, i) => ({
+                id: `${documentId}-${i}`, // Use documentId in vector ID for consistency
+                values: embeddings[i],
+                metadata: {
+                    text: chunk,
+                    filename: file.name,
+                    documentId: documentId, // Critical for robust deletion
+                    userId: user.id
+                }
+            }));
+
+            console.log(`>>> [UPLOAD] Upserting to Pinecone [${indexName}]...`);
+
+            // Split into batches for Pinecone if many chunks
+            const batchSize = 100;
+            for (let i = 0; i < vectors.length; i += batchSize) {
+                const batch = vectors.slice(i, i + batchSize);
+                await index.upsert(batch);
+            }
+
+            return NextResponse.json({
+                success: true,
+                chunks: chunks.length,
+                documentId: documentId
+            });
+
+        } catch (error: any) {
+            console.error('>>> [UPLOAD] Vector Store Error:', error);
+            // Rollback: Delete the Supabase record if vector operations fail
+            await supabase.from('documents').delete().eq('id', documentId);
+            throw new Error('Failed to process document vectors: ' + error.message);
+        }
 
     } catch (error: any) {
         console.error('>>> [UPLOAD] CRITICAL ERROR:', error.message);

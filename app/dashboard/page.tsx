@@ -10,15 +10,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
 import React, { useState, useRef, useEffect, Suspense } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useChat, Message } from 'ai/react'
 import { createClient } from '@/utils/supabase/client'
 import { toast } from 'sonner'
 import { useSearchParams, useRouter } from 'next/navigation'
 
 function DashboardContent() {
-    const [isUploading, setIsUploading] = useState(false)
-    const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const supabase = createClient()
     const searchParams = useSearchParams()
@@ -40,6 +39,7 @@ function DashboardContent() {
             chatId, // Send current Chat ID to backend
             useRAG: true
         },
+        maxSteps: 5, // Enable support for multiple tool call cycles
         onFinish: (message: Message, { finishReason }: { finishReason: any }) => {
             console.log('>>> [FRONTEND] Chat Finished');
             console.log('>>> [FRONTEND] Finish Reason:', finishReason);
@@ -149,46 +149,7 @@ function DashboardContent() {
         }
     }, [messages]);
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
 
-        setIsUploading(true)
-        const formData = new FormData()
-        formData.append('file', file)
-
-        try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData,
-            })
-
-            const result = await response.json()
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Upload failed')
-            }
-
-            toast.success(`File uploaded! Processed ${result.chunks} chunks.`)
-            setUploadedFileName(file.name)
-
-            // Add initial greeting from AI
-            const greetingMessage: Message = {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: 'How can I help you?',
-            }
-            setMessages((currentMessages: Message[]) => [...currentMessages, greetingMessage])
-        } catch (error: any) {
-            console.error('Upload Error:', error)
-            toast.error(error.message || 'Failed to upload file')
-        } finally {
-            setIsUploading(false)
-            if (fileInputRef.current) {
-                fileInputRef.current.value = ''
-            }
-        }
-    }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -202,14 +163,7 @@ function DashboardContent() {
             {/* Header */}
 
 
-            {uploadedFileName && (
-                <div className="px-4 pb-2">
-                    <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2 border border-blue-100">
-                        <Paperclip className="w-4 h-4" />
-                        <span className="font-medium">Document Uploaded: {uploadedFileName}</span>
-                    </div>
-                </div>
-            )}
+
 
             {/* Chat Area */}
             <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
@@ -242,11 +196,15 @@ function DashboardContent() {
                                         : 'bg-muted'
                                         }`}
                                 >
-                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                                    <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none break-words">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {message.content}
+                                        </ReactMarkdown>
+                                    </div>
                                 </div>
                                 {message.role === 'user' && (
-                                    <Avatar className="w-8 h-8 border shrink-0">
-                                        <AvatarFallback>You</AvatarFallback>
+                                    <Avatar className="w-8 h-8 border shrink-0 flex items-center justify-center bg-muted">
+                                        <User className="h-5 w-5" />
                                     </Avatar>
                                 )}
                             </div>
@@ -268,23 +226,7 @@ function DashboardContent() {
             {/* Input Area */}
             <div className="p-4 pt-2">
                 <div className="relative flex items-end gap-2 bg-muted/50 p-2 rounded-xl border focus-within:ring-1 focus-within:ring-ring">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        accept=".pdf"
-                        onChange={handleFileUpload}
-                    />
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground h-9 w-9 mb-1"
-                        disabled={isUploading || isLoading}
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
-                        <span className="sr-only">Attach file</span>
-                    </Button>
+
                     <Textarea
                         placeholder={"Message My Chatbot..."}
                         className="min-h-[44px] max-h-[200px] border-0 bg-transparent resize-none focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-3"
@@ -294,17 +236,15 @@ function DashboardContent() {
                         rows={1}
                     />
                     <div className="flex flex-col mb-1">
-                        {input.trim() ? (
-                            <Button size="icon" onClick={() => handleSubmit()} className="h-9 w-9" disabled={isLoading}>
-                                <Send className="w-4 h-4" />
-                                <span className="sr-only">Send message</span>
-                            </Button>
-                        ) : (
-                            <Button variant="ghost" size="icon" className="text-muted-foreground h-9 w-9">
-                                <Mic className="w-5 h-5" />
-                                <span className="sr-only">Voice input</span>
-                            </Button>
-                        )}
+                        <Button
+                            size="icon"
+                            onClick={() => handleSubmit()}
+                            className="h-9 w-9"
+                            disabled={isLoading || !input.trim()}
+                        >
+                            <Send className="w-4 h-4" />
+                            <span className="sr-only">Send message</span>
+                        </Button>
                     </div>
                 </div>
             </div>

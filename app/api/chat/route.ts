@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { streamText, embed } from 'ai'
 import { Pinecone } from '@pinecone-database/pinecone'
+import { z } from 'zod'
 
 const google = createGoogleGenerativeAI({
     apiKey: process.env.GEMINI_API_KEY || '',
@@ -50,31 +51,7 @@ export async function POST(request: NextRequest) {
             content: query
         })
 
-        // 2. RAG Context
-        let systemContext = 'You are a helpful AI assistant.'
-        if (useRAG && pinecone) {
-            try {
-                const { embedding } = await embed({
-                    model: google.textEmbeddingModel('text-embedding-004'),
-                    value: query,
-                })
-                const index = pinecone.index(process.env.PINECONE_INDEX_NAME!)
-                const queryResponse = await index.query({
-                    vector: embedding,
-                    topK: 5,
-                    includeMetadata: true,
-                    filter: { userId: { '$eq': user.id } }
-                })
-                if (queryResponse.matches?.length) {
-                    const ctx = queryResponse.matches.map((m: any) => m.metadata?.text || '').join('\n\n')
-                    systemContext = `Use this context to answer: ${ctx}`
-                }
-            } catch (e) {
-                console.error('RAG Search Error:', e)
-            }
-        }
-
-        // 3. Gemini Sanitization (Mandatory)
+        // 2. Gemini Sanitization (Mandatory)
         // Gemini fails if roles don't strictly alternate (user, assistant, user, assistant...)
         const raw = messages.filter((m: any) => ['user', 'assistant'].includes(m.role) && m.content?.trim());
         const cleaned: any[] = [];
@@ -89,13 +66,86 @@ export async function POST(request: NextRequest) {
         while (cleaned.length > 0 && cleaned[0].role !== 'user') cleaned.shift();
         if (cleaned.length === 0) cleaned.push({ role: 'user', content: query });
 
-        // 4. AI Stream
+        // 3. AI Stream with Tools
+        console.log('>>> [BACKEND] Starting streamText. Model: gemini-1.5-flash, MaxSteps: 3');
         const result = await streamText({
-            model: google('gemini-2.5-flash'), // Switch to stable model
-            system: systemContext,
+            model: google('gemini-2.5-flash'),
+            system: `You are a helpful AI assistant with access to the user's documents.
+            
+            GUIDELINES:
+            1. ALWAYS check what documents are available using 'list_documents' if the user asks about their files or knowledge base.
+            2. Use 'query_knowledge' to search for specific answers.
+            3. After using a tool, synthesize the information and provide a clear, helpful response to the user.
+            4. If no information is found, tell the user honestly.
+            5. You can search multiple times if the first query doesn't yield results.`,
             messages: cleaned,
+            maxSteps: 5, // Keep it efficient to stay within quota limits
+            tools: {
+                list_documents: {
+                    description: 'List all documents uploaded by the user.',
+                    parameters: z.object({
+                        includeMetadata: z.boolean().optional().describe('Whether to include extra metadata')
+                    }),
+                    execute: async () => {
+                        console.log('>>> [TOOL] list_documents execution started');
+                        const { data, error } = await supabase
+                            .from('documents')
+                            .select('id, name')
+                            .eq('user_id', user.id);
+                        if (error) {
+                            console.error('>>> [TOOL ERROR] list_documents:', error);
+                            throw error;
+                        }
+                        console.log('>>> [TOOL] list_documents found:', data?.length || 0, 'docs');
+                        return data || [];
+                    }
+                },
+                query_knowledge: {
+                    description: 'Search through uploaded documents for specific information.',
+                    parameters: z.object({
+                        query: z.string().describe('The search query for semantic search.'),
+                    }),
+                    execute: async ({ query: searchQuery }) => {
+                        console.log('>>> [TOOL] query_knowledge calling Pinecone for:', searchQuery);
+                        if (!pinecone) return "Vector search is not configured.";
+
+                        try {
+                            const { embedding } = await embed({
+                                model: (google as any).textEmbeddingModel('text-embedding-004'),
+                                value: searchQuery,
+                            });
+
+                            const index = pinecone.index(process.env.PINECONE_INDEX_NAME!);
+                            const queryResponse = await index.query({
+                                vector: embedding,
+                                topK: 7,
+                                includeMetadata: true,
+                                filter: { userId: { '$eq': user.id } }
+                            });
+
+                            if (!queryResponse.matches?.length) {
+                                console.log('>>> [TOOL] query_knowledge: No matches found.');
+                                return "No relevant information found in documents.";
+                            }
+
+                            console.log('>>> [TOOL] query_knowledge: Found', queryResponse.matches.length, 'matches');
+                            return queryResponse.matches.map((m: any) =>
+                                `[Source: ${m.metadata?.filename || 'Unknown'}] ${m.metadata?.text || ''}`
+                            ).join('\n\n');
+
+                        } catch (e: any) {
+                            console.error('>>> [TOOL ERROR] query_knowledge:', e);
+                            return `Error searching documents: ${e.message}`;
+                        }
+                    }
+                }
+            },
+            onStepFinish: ({ text, toolCalls, toolResults, finishReason }) => {
+                console.log(`>>> [STEP] Reason: ${finishReason}, Tools: ${toolCalls?.length || 0}, Res: ${toolResults?.length || 0}`);
+                if (text) console.log(`>>> [STEP] Generated text length: ${text.length}`);
+            },
             onFinish: async ({ text }) => {
-                // Silently save to DB to avoid stream corruption
+                console.log('>>> [BACKEND] Stream finished completely. Final text length:', text?.length || 0);
                 if (text) {
                     try {
                         await supabase.from('messages').insert({
@@ -104,28 +154,30 @@ export async function POST(request: NextRequest) {
                             content: text
                         })
                     } catch (e) {
-                        // Suppress error
+                        console.error('>>> [BACKEND ERROR] Message save:', e);
                     }
                 }
             }
         })
 
+        console.log('>>> [BACKEND] streamText successfully initiated');
         // Return pure stream response with error forwarding enabled
-        // Cast to any to bypass type mismatch with older SDK version
         return (result as any).toDataStreamResponse({
             headers: {
                 'X-Chat-Id': currentChatId,
                 'Cache-Control': 'no-cache',
             },
             getErrorMessage: (error: any) => {
-                // IMPORTANT: Forward the actual error message to the frontend
+                console.error('>>> [STREAM ERROR] Forwarded to frontend:', error);
                 return (error?.message) || 'Unknown stream error';
             }
         })
 
     } catch (error: any) {
-        // Only log critical errors to terminal, do not return JSON if stream started
-        console.error('Chat API Fatal:', error.message)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        console.error('>>> [FATAL ERROR] Chat API:', error);
+        return NextResponse.json({
+            error: error.message || 'Internal Server Error',
+            details: error.stack
+        }, { status: 500 })
     }
 }

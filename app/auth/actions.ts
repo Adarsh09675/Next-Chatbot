@@ -68,7 +68,7 @@ export async function signup(prevState: unknown, formData: FormData) {
     }
 
     console.log('>>> [AUTH ACTION] Attempting sign up for:', data.email);
-    const { error } = await supabase.auth.signUp({
+    const { data: authData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
@@ -82,6 +82,12 @@ export async function signup(prevState: unknown, formData: FormData) {
     if (error) {
         console.error('>>> [AUTH ACTION] Signup Error:', error.message)
         return { error: error.message }
+    }
+
+    // Check if email confirmation is required (session will be null)
+    if (!authData.session) {
+        console.log('>>> [AUTH ACTION] Signup successful, but email confirmation required for:', data.email);
+        return { error: 'Please check your email to confirm your account before logging in.' }
     }
 
     console.log('>>> [AUTH ACTION] Signup successful for:', data.email);

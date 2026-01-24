@@ -1,121 +1,193 @@
 'use client'
 
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
-import { Trash2, FileText, Loader2 } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Loader2, Upload, Trash2, FileText, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 
 interface Document {
-    id: number
+    id: string
     name: string
     created_at: string
 }
 
 export default function DocumentsPage() {
-    const supabase = createClient()
     const [documents, setDocuments] = useState<Document[]>([])
     const [isLoading, setIsLoading] = useState(true)
-    const [isDeleting, setIsDeleting] = useState<number | null>(null)
+    const [isUploading, setIsUploading] = useState(false)
+    const [uploadingFile, setUploadingFile] = useState<string | null>(null)
+    const [isDeleting, setIsDeleting] = useState<string | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const supabase = createClient()
 
     useEffect(() => {
         fetchDocuments()
     }, [])
 
-    async function fetchDocuments() {
+    const fetchDocuments = async () => {
         try {
-            console.log('Fetching documents from Supabase...');
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+
             const { data, error } = await supabase
                 .from('documents')
                 .select('*')
+                .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
 
-            if (error) {
-                console.error('Supabase Error fetching documents:', error.message, error.details);
-                toast.error('Failed to load documents: ' + error.message)
-            } else {
-                console.log(`Successfully fetched ${data?.length || 0} documents`);
-                setDocuments(data || [])
-            }
-        } catch (err: any) {
-            console.error('Caught unexpected error in fetchDocuments:', err);
+            if (error) throw error
+            setDocuments(data || [])
+        } catch (error) {
+            console.error('Error fetching documents:', error)
+            toast.error('Failed to load documents')
         } finally {
             setIsLoading(false)
         }
     }
 
-    async function handleDelete(id: number) {
-        setIsDeleting(id)
-        try {
-            const { error } = await supabase
-                .from('documents')
-                .delete()
-                .eq('id', id)
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
 
-            if (error) {
-                throw error
+        setIsUploading(true)
+        setUploadingFile(file.name)
+        const formData = new FormData()
+        formData.append('file', file)
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+            })
+
+            const result = await response.json()
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Upload failed')
             }
 
-            setDocuments(documents.filter(doc => doc.id !== id))
+            toast.success(`File uploaded! Processed ${result.chunks} chunks.`)
+            fetchDocuments() // Refresh list
+        } catch (error: any) {
+            console.error('Upload Error:', error)
+            toast.error(error.message || 'Failed to upload file')
+        } finally {
+            setIsUploading(false)
+            setUploadingFile(null)
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ''
+            }
+        }
+    }
+
+    const handleDelete = async (doc: Document) => {
+        if (!confirm(`Are you sure you want to delete "${doc.name}"? This will remove it from the knowledge base.`)) {
+            return
+        }
+
+        setIsDeleting(doc.id)
+        try {
+            const response = await fetch('/api/documents/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    documentId: doc.id,
+                    filename: doc.name,
+                }),
+            })
+
+            const result = await response.json()
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Delete failed')
+            }
+
             toast.success('Document deleted successfully')
-        } catch (error) {
-            console.error('Error deleting document:', error)
-            toast.error('Failed to delete document')
+            setDocuments(documents.filter(d => d.id !== doc.id))
+        } catch (error: any) {
+            console.error('Delete Error:', error)
+            toast.error(error.message || 'Failed to delete document')
         } finally {
             setIsDeleting(null)
         }
     }
 
-    if (isLoading) {
-        return (
-            <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-        )
-    }
-
     return (
-        <div className="container max-w-4xl py-6 mx-auto">
+        <div className="container max-w-4xl mx-auto py-8 space-y-8">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Documents</h1>
+                    <p className="text-muted-foreground mt-2">
+                        Manage your knowledge base documents here. Upload PDFs to enhance the chatbot's answers.
+                    </p>
+                </div>
+                <div>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept=".pdf"
+                        onChange={handleFileUpload}
+                    />
+                    <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                        {isUploading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <Plus className="mr-2 h-4 w-4" />
+                        )}
+                        Upload PDF
+                    </Button>
+                </div>
+            </div>
+
             <Card>
                 <CardHeader>
-                    <CardTitle>Knowledge Base</CardTitle>
+                    <CardTitle>Uploaded Files</CardTitle>
                     <CardDescription>
-                        Manage your uploaded documents. These files are used as context for your AI chats.
+                        These documents are indexed and used by the chatbot to answer your questions.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {documents.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                            <FileText className="h-12 w-12 mb-4 opacity-50" />
+                    {isLoading ? (
+                        <div className="flex justify-center py-8">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : documents.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground">
+                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-20" />
                             <p>No documents uploaded yet.</p>
-                            <p className="text-sm">Upload files in the chat view to see them here.</p>
+                            <p className="text-sm">Upload a PDF to get started.</p>
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Name</TableHead>
-                                    <TableHead>Uploaded At</TableHead>
+                                    <TableHead>Date Uploaded</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
+                                {isUploading && uploadingFile && (
+                                    <TableRow className="bg-muted/50">
+                                        <TableCell className="font-medium flex items-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                            {uploadingFile}
+                                        </TableCell>
+                                        <TableCell>
+                                            <span className="text-xs text-muted-foreground italic">Uploading & Processing...</span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Loader2 className="h-4 w-4 animate-spin ml-auto text-muted-foreground" />
+                                        </TableCell>
+                                    </TableRow>
+                                )}
                                 {documents.map((doc) => (
                                     <TableRow key={doc.id}>
                                         <TableCell className="font-medium flex items-center gap-2">
@@ -123,15 +195,15 @@ export default function DocumentsPage() {
                                             {doc.name}
                                         </TableCell>
                                         <TableCell>
-                                            {format(new Date(doc.created_at), 'PPP')}
+                                            {format(new Date(doc.created_at), 'MMM d, yyyy')}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                onClick={() => handleDelete(doc.id)}
+                                                onClick={() => handleDelete(doc)}
                                                 disabled={isDeleting === doc.id}
-                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                className="text-muted-foreground hover:text-destructive"
                                             >
                                                 {isDeleting === doc.id ? (
                                                     <Loader2 className="h-4 w-4 animate-spin" />
