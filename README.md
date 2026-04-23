@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next-Chatbot 🤖
 
-## Getting Started
+A modern, high-performance AI-powered chatbot built with Next.js, Supabase, Pinecone, and Google's Gemini API. This project features Retrieval-Augmented Generation (RAG) for intelligent document processing and real-time chat interactions.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **🚀 Real-time Chat**: Seamlessly interact with Gemini-powered AI.
+- **📚 RAG Integration**: Upload and query documents (PDFs) with Pinecone vector database.
+- **🔐 Secure Auth**: Built-in authentication with Supabase SSR.
+- **🎨 Premium UI**: Sleek, responsive design using Tailwind CSS and Radix UI components.
+- **⚡ Performance**: Optimized with Next.js 15+ and server actions.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Frontend**: Next.js, React, Tailwind CSS
+- **Backend**: Supabase (Database & Auth)
+- **Vector DB**: Pinecone
+- **AI Model**: Google Gemini Pro (via `@ai-sdk/google`)
+- **State Management**: React Hook Form, Zod
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚀 Getting Started
 
-## Learn More
+### Prerequisites
 
-To learn more about Next.js, take a look at the following resources:
+- Node.js 18+ 
+- pnpm (recommended) or npm
+- Supabase Account
+- Pinecone Account
+- Google AI (Gemini) API Key
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Installation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Adarsh09675/Next-Chatbot.git
+   cd Next-Chatbot
+   ```
 
-## Deploy on Vercel
+2. **Install dependencies**:
+   ```bash
+   pnpm install
+   # or
+   npm install
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. **Set up Environment Variables**:
+   Create a `.env.local` (or `.env`) file in the root directory and copy the contents from `.env.example`:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Fill in your API keys and credentials.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. **Database Setup**:
+   - Run the SQL scripts found in the `database/` folder in your Supabase SQL Editor to set up the necessary tables and functions.
+
+5. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) to see the app in action!
+
+## 📁 Project Structure
+
+- `app/`: Next.js App Router (pages and server actions)
+- `components/`: Reusable UI components (Radix UI + Tailwind)
+- `lib/`: Shared utilities and database clients
+- `database/`: SQL setup scripts for Supabase
+- `public/`: Static assets
+
+## 📄 License
+
+This project is licensed under the MIT License.

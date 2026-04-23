@@ -6,6 +6,14 @@ create table if not exists public.chatbot_profiles (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Ensure full_name column exists (in case table was created without it)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'chatbot_profiles' and column_name = 'full_name') then
+    alter table public.chatbot_profiles add column full_name text;
+  end if;
+end $$;
+
 -- Enable RLS
 alter table public.chatbot_profiles enable row level security;
 
@@ -28,7 +36,10 @@ begin
   -- This ensures users from other apps don't clutter this table
   if new.raw_user_meta_data->>'app_name' = 'my-chatbot' then
     insert into public.chatbot_profiles (id, email, full_name)
-    values (new.id, new.email, new.raw_user_meta_data->>'full_name');
+    values (new.id, new.email, new.raw_user_meta_data->>'full_name')
+    on conflict (id) do update
+    set full_name = excluded.full_name,
+        email = excluded.email;
   end if;
   return new;
 end;
